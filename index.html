@@ -276,6 +276,35 @@ body.mxlist #mxlist{display:block}
 .wk q{display:block;color:var(--ink);font-size:13px;margin:3px 0;font-style:italic}
 .wk span{font-family:var(--mono);font-size:11px;color:var(--muted)}
 
+/* ---------- portal de entrada ---------- */
+body.locked{overflow:hidden}
+body.locked .topbar,body.locked .wrap{display:none}
+.gate{position:fixed;inset:0;z-index:200;display:none;flex-direction:column;
+  align-items:center;justify-content:center;text-align:center;padding:28px 22px;
+  background:var(--bg);
+  background-image:radial-gradient(ellipse at 50% 8%, #22336B 0%, transparent 58%),
+                   radial-gradient(ellipse at 50% 100%, #2A1C3F 0%, transparent 55%)}
+body.locked .gate{display:flex}
+.gate img.mark{width:min(196px,44vw);height:auto;margin-bottom:20px;
+  filter:drop-shadow(0 6px 26px rgba(255,203,5,.3));
+  animation:float 5s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.gate h1{font-size:clamp(26px,7vw,38px);letter-spacing:.02em;line-height:1.1}
+.gate h1 i{font-style:normal;color:var(--yellow)}
+.gate .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.3em;
+  color:var(--dim);margin-top:9px;text-transform:uppercase}
+.gate .msg{color:var(--muted);font-size:14.5px;margin:26px 0 20px;max-width:380px;line-height:1.6}
+.gate .expired{color:#FFC0C0;background:rgba(238,21,21,.1);border:1px solid rgba(238,21,21,.34);
+  border-radius:8px;padding:11px 15px;font-size:13.5px;margin-bottom:4px;max-width:380px}
+.gate .namebox{width:100%;max-width:340px;display:flex;flex-direction:column;gap:11px}
+.gate .namebox input{text-align:center;font-size:16px;padding:12px}
+.gate .foot{margin-top:30px;font-size:11.5px;color:var(--dim);max-width:340px;line-height:1.6}
+.gate .who{display:flex;align-items:center;gap:9px;margin-bottom:18px;font-size:13px;color:var(--muted)}
+.gate .who img{width:30px;height:30px;border-radius:50%;border:1px solid var(--line2)}
+.gate .spin{width:26px;height:26px;border:2.5px solid var(--line2);border-top-color:var(--yellow);
+  border-radius:50%;animation:spin .8s linear infinite;margin:22px 0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
@@ -338,7 +367,16 @@ body.mxlist #mxlist{display:block}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
-<body>
+<body class="locked">
+
+<div class="gate" id="gate">
+  <img class="mark" id="gatelogo" alt="Imperio PoGo">
+  <h1>IMPERIO <i>PoGo</i></h1>
+  <div class="sub">Desafío Semanal</div>
+  <div id="gatebody"><div class="spin"></div></div>
+  <div class="foot">Solo miembros del Imperio. Tu sesión se cierra sola
+    después de 72 horas sin entrar.</div>
+</div>
 
 <div class="topbar"><div class="topbar-in">
   <div class="logo">
@@ -599,35 +637,25 @@ function faltan(h){
 let DB=null, draft=null, names=[], pins=[], sel=null, edited=false, openPair=null;
 let mxMode = matchMedia('(max-width:760px)').matches ? 'list' : 'grid', mxTouched=false;
 let USER=null, applying=false, needsName=false;
+const SESION_HORAS = 72;                       // inactividad antes de pedir login otra vez
+const SESION_MS = SESION_HORAS*60*60*1000;
+let gateAviso='';
 
 /* logo precargado */
 const LOGO = new Image(); LOGO.src = LOGO_LG;
 (function(){
   document.getElementById('logoimg').src = LOGO_SM;
+  document.getElementById('gatelogo').src = LOGO_LG;
   const f=document.createElement('link'); f.rel='icon'; f.href=LOGO_SM;
   document.head.appendChild(f);
 })();
 
-/* ---------- roster del Imperio · jul 2026 ---------- */
+/* ---------- Semilla de arranque ----------
+   El roster real vive en Firestore. Esto solo se usa si la nube está
+   vacía, cosa que ya no va a pasar. Se dejó sin datos a propósito:
+   el repo es público y los códigos de amigo no tienen por qué estarlo. */
 const ROSTER = [
- ['Vhansa',[['VhanDiego','0097 5522 8128',3],['SohnderNatch','4041 7964 9138',2],
-   ['PietroMagno','9431 6496 4643',2],['DoctorVhan','6941 8609 0047',1],
-   ['LitoDeTarstein','6058 6124 4705',1],['NathLillith','6940 8733 5959',1],
-   ['Misscherrycat33','6684 3270 4954',1],['Estrellitaa333','2681 9094 4219',1]]],
- ['Lud',[['Ludspr92','5068 7979 3590',3],['Aimeetlove','8939 4341 0877',2],
-   ['Ludperio','5357 5757 0906',2],['Lunaberta92','0063 0744 0262',1],
-   ['Tracynhia','8690 5174 7295',1],['Aimeeperio','3510 7617 4062',1]]],
- ['Carrillo',[['Rodrigocmza','4189 3227 4796',3],['Rodrigocmza02','9742 7931 3051',2],
-   ['Rodrigocmza03','6645 5612 4332',2],['Rodrigocmza04','4194 0002 2063',1]]],
- ['Pablini',[['PabliniGM','5767 5191 0421',3],['MasterParzi','0324 3161 3114',2],
-   ['PabliniGM (2)','5402 3156 7976',1],['PablexG1998','1444 0787 3048',1]]],
- ['Tony',[['AbsolutKng','7598 3243 6894',3],['AbsolutKng02','9855 0392 0946',2],
-   ['AbsolutKng03','8617 3907 0209',2],['AbsolutKng04','3586 7777 9319',1]]],
- ['Jhon',[['Wazemester','1714 3044 9200',3],['Wazemen','8188 8340 5999',2],
-   ['LaGataMedina','5462 2750 5535',1]]],
- ['Alexis',[['Eskoomen','0536 9318 4217',3],['Eskomaster','9154 3565 9181',1]]],
- ['Snell',[['LSnellG','4919 9105 8069',3],['Lils99368','7753 5629 9161',1]]],
- ['Gabo',[['Gabolon','0769 8662 4265',3]]]
+ ['Jugador 1',[['cuenta-1','',3]]]
 ];
 function seedDB(){
   const owners=[], accounts=[]; let oi=0, ai=0;
@@ -1020,6 +1048,51 @@ function renderStats(){
       <span>${w.date||''} · ${w.completed}/${w.groups.length} escuadras · ${w.newPairs} pares nuevos${
         w.out?` · ${w.out} fuera`:''}${w.edited?' · editada a mano':''}</span></div>`).join('')
     : `<p class="hint">Todavía no hay semanas cerradas.</p>`;
+}
+
+const GBTN = `<button class="gbtn" id="gsignin">
+  <svg viewBox="0 0 48 48"><path fill="#4285F4" d="M45 24c0-1.6-.1-2.7-.4-4H24v7.5h12c-.2 2-1.5 5-4.4 7l6.7 5.2C42.2 36 45 30.6 45 24z"/><path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7.1 5.5C8.1 41 15.4 46 24 46z"/><path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.7-2.9-.7-4.4s.3-3 .7-4.4l-7.1-5.5C2.9 17 2 20.4 2 24s.9 7 2.4 9.9l7.1-5.5z"/><path fill="#EA4335" d="M24 10.7c3.2 0 5.4 1.4 6.7 2.6l5.9-5.8C33 4.1 29.9 2 24 2 15.4 2 8.1 7 4.4 14.1l7.1 5.5C13.3 14.4 18.2 10.7 24 10.7z"/></svg>
+  Entrar con Google</button>`;
+
+function gate(estado){
+  const b=$('#gatebody');
+  if(estado==='abierto'){ document.body.classList.remove('locked'); return }
+  document.body.classList.add('locked');
+  if(estado==='cargando'){ b.innerHTML='<div class="spin"></div>'; return }
+  if(estado==='entrar'){
+    b.innerHTML = (gateAviso?`<div class="expired">${gateAviso}</div>`:'') +
+      `<p class="msg">Entra con tu cuenta de Google para ver las escuadras de la semana.</p>${GBTN}`;
+    gateAviso=''; return;
+  }
+  if(estado==='nombre'){
+    b.innerHTML=`<div class="who"><img src="${USER?.photo||''}" alt="">${USER?.email||''}</div>
+      <p class="msg" style="margin:0 0 16px">Es tu primera vez aquí.
+        ¿Cómo quieres que te vean los demás?</p>
+      <div class="namebox">
+        <input type="text" id="gname" maxlength="40" placeholder="Tu nombre en el grupo"
+          value="${USER?.name||''}" autocomplete="off">
+        <button class="btn btn-go" id="gsave">Entrar al Imperio</button>
+      </div>`;
+    setTimeout(()=>$('#gname')?.focus(),80); return;
+  }
+}
+$('#gate').addEventListener('click', async e => {
+  if(e.target.closest('#gsignin')) window.__signIn?.();
+  if(e.target.closest('#gsave')) await registrarNombre($('#gname').value);
+});
+$('#gate').addEventListener('keydown', async e => {
+  if(e.key==='Enter' && e.target.id==='gname'){ e.preventDefault(); await registrarNombre(e.target.value) }
+});
+async function registrarNombre(txt){
+  const n=(txt||'').trim();
+  if(!n){ $('#gname')?.focus(); return }
+  const hayAdmin=(DB.people||[]).some(p=>p.rol==='admin');
+  const rol = ADMINS.includes((USER.email||'').toLowerCase()) || !hayAdmin ? 'admin' : 'editor';
+  const yo={uid:USER.uid, nombre:n, email:USER.email, photo:USER.photo, rol, lastSeen:Date.now()};
+  DB.people=(DB.people||[]).filter(p=>p.uid!==USER.uid).concat(yo);
+  needsName=false;
+  await saveUsuario(yo);
+  gate('abierto'); renderAll();
 }
 
 const esAdmin = () => {
@@ -1446,16 +1519,8 @@ $('#reset').onclick = async () => {
 $('#authbox').addEventListener('click', async e => {
   if(e.target.closest('#signin'))  window.__signIn?.();
   if(e.target.closest('#signout')) window.__signOut?.();
-  if(e.target.closest('#guardaNombre')){
-    const n=$('#nombreNuevo').value.trim();
-    if(!n){ $('#nombreNuevo').focus(); return }
-    const hayAdmin=(DB.people||[]).some(p=>p.rol==='admin');
-    const rol = ADMINS.includes((USER.email||'').toLowerCase()) || !hayAdmin ? 'admin' : 'editor';
-    const yo={uid:USER.uid, nombre:n, email:USER.email, photo:USER.photo, rol};
-    DB.people=(DB.people||[]).filter(p=>p.uid!==USER.uid).concat(yo);
-    needsName=false;
-    await saveUsuario(yo); renderPerfil();
-  }
+  if(e.target.closest('#guardaNombre'))
+    await registrarNombre($('#nombreNuevo')?.value);
 });
 $('#people').addEventListener('change', async e => {
   const uid=e.target.dataset.rol; if(!uid || !esAdmin()) return;
@@ -1492,12 +1557,36 @@ async function initFirebase(){
   window.__signIn  = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
   window.__signOut = () => auth.signOut();
 
-  auth.onAuthStateChanged(u => {
-    USER = u ? {uid:u.uid, name:u.displayName, email:u.email, photo:u.photoURL} : null;
-    needsName = !!USER && !(DB.people||[]).some(p=>p.uid===USER.uid);
-    if(USER) escuchar();
+  auth.onAuthStateChanged(async u => {
+    if(!u){ USER=null; renderPerfil(); gate('entrar'); return }
+    USER={uid:u.uid, name:u.displayName, email:u.email, photo:u.photoURL};
+
+    let mio=null;
+    try{ const d=await FS.collection('usuarios').doc(u.uid).get();
+      mio = d.exists ? d.data() : null;
+    }catch(e){ /* sin lectura: se deja pasar y las reglas deciden */ }
+
+    // caducidad por inactividad
+    if(mio?.lastSeen && Date.now()-mio.lastSeen > SESION_MS){
+      gateAviso=`Pasaron más de ${SESION_HORAS} horas sin que entraras, así que cerramos tu sesión.`;
+      await auth.signOut(); return;                 // vuelve a entrar aquí con u=null
+    }
+
+    needsName = !mio || !mio.nombre;
+    escuchar();
+    if(needsName){ gate('nombre') }
+    else { tocar(); gate('abierto'); renderAll() }
     renderPerfil();
   });
+
+  /* marca de última visita: es lo que mide la inactividad */
+  async function tocar(){
+    if(!USER) return;
+    try{ await FS.collection('usuarios').doc(USER.uid).set({lastSeen:Date.now()},{merge:true}) }catch(e){}
+  }
+  window.__tocar = tocar;
+  setInterval(()=>{ if(USER && !document.hidden) tocar() }, 10*60*1000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) window.__tocar?.() });
 
   /* Escuchas separadas: cada sección llega por su lado, así un cambio en
      una amistad no reescribe el roster ni la semana en curso. */
@@ -1539,6 +1628,7 @@ async function initFirebase(){
   const saved=await Store.loadLocal();
   DB=(saved && saved.v===4) ? saved : seedDB();
   DB.people=DB.people||[]; DB.active=DB.active||null;
+  gate(hasFB() ? 'cargando' : 'abierto');
   renderAll();
   initFirebase();
 })();

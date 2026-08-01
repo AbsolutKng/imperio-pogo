@@ -234,6 +234,17 @@ body.mxlist #mxlist{display:block}
 
 /* ---------- roster / perfil ---------- */
 .owner{border:1px solid var(--line);border-radius:var(--r);background:var(--panel);padding:13px;margin-bottom:10px}
+.owner .accts{display:none;margin-top:4px;padding-top:8px;border-top:1px solid var(--line)}
+.owner.open .accts{display:block;animation:drop .2s ease}
+@keyframes drop{from{opacity:0;transform:translateY(-4px)}}
+.owner-sum{font-size:12px;color:var(--dim);font-family:var(--mono);white-space:nowrap}
+.tog{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);
+  border:1px solid var(--line2);color:var(--muted);padding:6px 11px;border-radius:20px;
+  font-size:12.5px;transition:.14s;margin-left:auto}
+.tog:hover{color:var(--ink);border-color:var(--dim)}
+.tog .car{font-size:10px;transition:.2s}
+.owner.open .tog .car{transform:rotate(180deg)}
+.owner.open .tog{color:var(--yellow);border-color:rgba(255,203,5,.4)}
 .owner-h{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
 .owner-h input{flex:1;max-width:200px;font-weight:500}
 .acct{display:flex;align-items:center;gap:8px;padding:5px 0 5px 16px;font-size:14px;flex-wrap:wrap}
@@ -513,6 +524,7 @@ body.locked .gate{display:flex}
 <section class="view" id="v-ros">
   <div class="row" style="margin-bottom:15px">
     <button class="btn" id="addOwner">Añadir jugador</button>
+    <button class="btn" id="todos">Expandir todo</button>
     <button class="btn" id="exp">Exportar JSON</button>
     <button class="btn" id="imp">Importar JSON</button>
     <button class="btn btn-danger" id="reset">Reiniciar todo</button>
@@ -637,6 +649,7 @@ function faltan(h){
 let DB=null, draft=null, names=[], pins=[], sel=null, edited=false, openPair=null;
 let mxMode = matchMedia('(max-width:760px)').matches ? 'list' : 'grid', mxTouched=false;
 let USER=null, applying=false, needsName=false;
+const rosterAbierto = new Set();
 const SESION_HORAS = 72;                       // inactividad antes de pedir login otra vez
 const SESION_MS = SESION_HORAS*60*60*1000;
 let gateAviso='';
@@ -1018,26 +1031,41 @@ function renderMatrixList(){
 function renderRoster(){
   $('#roster').innerHTML=DB.owners.map(o=>{
     const accs=DB.accounts.filter(a=>a.ownerId===o.id);
-    return `<div class="owner">
+    const c={3:0,2:0,1:0}; accs.forEach(a=>c[a.tier]++);
+    const fuera=accs.filter(a=>a.out).length;
+    const resumen=[c[3]&&`${c[3]} Main`, c[2]&&`${c[2]} Alt. Main`, c[1]&&`${c[1]} Alt. Low`]
+      .filter(Boolean).join(' · ') || 'sin cuentas';
+    const malos=accs.filter(a=>codeBad(a.code)).length;
+    const abierto=rosterAbierto.has(o.id);
+    return `<div class="owner ${abierto?'open':''}" data-owner="${o.id}">
       <div class="owner-h">
         <span class="pip" style="background:${ownerColor(o.id)};width:9px;height:9px"></span>
         <input type="text" value="${o.name}" data-oname="${o.id}">
-        <span class="hint">${accs.length} cuentas</span>
-        <button class="btn btn-sm" data-addacc="${o.id}">+ cuenta</button>
-        <button class="btn btn-sm btn-danger" data-delowner="${o.id}">✕</button>
+        <span class="owner-sum">${accs.length} · ${resumen}</span>
+        ${fuera?`<span class="chip warn">${fuera} fuera</span>`:''}
+        ${malos?`<span class="chip warn">${malos} código${malos>1?'s':''} mal</span>`:''}
+        <button class="tog" data-tog="${o.id}">
+          <span>${abierto?'Ver menos':'Ver más'}</span><span class="car">▾</span></button>
       </div>
-      ${accs.map(a=>`<div class="acct">
-        <input type="text" value="${a.name}" data-aname="${a.id}">
-        <select data-tier="${a.id}">
-          ${[3,2,1].map(t=>`<option value="${t}" ${a.tier==t?'selected':''}>${TIERS[t]}</option>`).join('')}
-        </select>
-        <code class="code ${codeBad(a.code)?'bad':''}" data-copy="${a.code||''}"
-          title="${codeBad(a.code)?'Código incompleto':'Clic para copiar'}">${a.code||'sin código'}</code>
-        ${a.out?'<span class="chip warn">fuera</span>':''}
-        <button class="btn btn-sm btn-danger" data-delacc="${a.id}">✕</button>
-      </div>`).join('')}
+      <div class="accts">
+        ${accs.map(a=>`<div class="acct">
+          <input type="text" value="${a.name}" data-aname="${a.id}">
+          <select data-tier="${a.id}">
+            ${[3,2,1].map(t=>`<option value="${t}" ${a.tier==t?'selected':''}>${TIERS[t]}</option>`).join('')}
+          </select>
+          <code class="code ${codeBad(a.code)?'bad':''}" data-copy="${a.code||''}"
+            title="${codeBad(a.code)?'Código incompleto':'Clic para copiar'}">${a.code||'sin código'}</code>
+          ${a.out?'<span class="chip warn">fuera</span>':''}
+          <button class="btn btn-sm btn-danger" data-delacc="${a.id}">✕</button>
+        </div>`).join('')}
+        <div class="row" style="margin-top:10px;gap:7px">
+          <button class="btn btn-sm" data-addacc="${o.id}">+ cuenta</button>
+          <button class="btn btn-sm btn-danger" data-delowner="${o.id}">Eliminar jugador</button>
+        </div>
+      </div>
     </div>`;
   }).join('');
+  $('#todos').textContent = rosterAbierto.size ? 'Contraer todo' : 'Expandir todo';
 }
 
 function renderStats(){
@@ -1490,7 +1518,16 @@ $('#roster').addEventListener('change', async e => {
   else return;
   await saveRoster(); renderAvail(); renderPins(); renderMatrix(); renderStats();
 });
+$('#todos').onclick = () => {
+  if(rosterAbierto.size) rosterAbierto.clear();
+  else DB.owners.forEach(o=>rosterAbierto.add(o.id));
+  renderRoster();
+};
 $('#roster').addEventListener('click', async e => {
+  const t=e.target.closest('[data-tog]');
+  if(t){ const id=t.dataset.tog;
+    rosterAbierto.has(id) ? rosterAbierto.delete(id) : rosterAbierto.add(id);
+    renderRoster(); return }
   const d=e.target.dataset; let dirty=false;
   if(d.copy!==undefined){
     navigator.clipboard?.writeText(d.copy);
@@ -1500,7 +1537,8 @@ $('#roster').addEventListener('click', async e => {
   if(d.addacc){
     const n=DB.accounts.filter(a=>a.ownerId===d.addacc).length;
     DB.accounts.push({id:'a'+Date.now(), ownerId:d.addacc,
-      name:own(d.addacc).name+'-'+(n+1), code:'', tier:1, out:false}); dirty=true;
+      name:own(d.addacc).name+'-'+(n+1), code:'', tier:1, out:false});
+    rosterAbierto.add(d.addacc); dirty=true;
   }
   if(d.delacc){ DB.accounts=DB.accounts.filter(a=>a.id!==d.delacc); dirty=true }
   if(d.delowner){
@@ -1511,7 +1549,9 @@ $('#roster').addEventListener('click', async e => {
     await saveRoster(); renderAll() }
 });
 $('#addOwner').onclick = async () => {
-  DB.owners.push({id:'o'+Date.now(), name:'Nuevo jugador'}); await saveRoster(); renderAll();
+  const nid='o'+Date.now();
+  DB.owners.push({id:nid, name:'Nuevo jugador'}); rosterAbierto.add(nid);
+  await saveRoster(); renderAll();
 };
 $('#exp').onclick = () => {
   const b=new Blob([JSON.stringify(DB,null,2)],{type:'application/json'});

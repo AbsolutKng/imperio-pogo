@@ -716,11 +716,14 @@ const Cloud = {
   get on(){ return !!FS && !applying },
   roster(){ return FS.collection('config').doc('roster')
     .set({owners:DB.owners, accounts:DB.accounts, at:Date.now()}) },
+  /* Firestore no admite arrays dentro de arrays, y groups/names lo son.
+     Por eso viajan como texto JSON. */
   estado(){ return FS.collection('config').doc('estado')
-    .set({counter:DB.counter, active:DB.active||null, at:Date.now()}) },
+    .set({counter:DB.counter, activeJson: DB.active?JSON.stringify(DB.active):'', at:Date.now()}) },
   par(k){ const p=DB.pairs[k]||{h:0,last:null,n:0};
     return FS.collection('pares').doc(docId(k)).set({...p, k}) },
-  semana(w){ return FS.collection('semanas').doc(String(w.n)).set(w) },
+  semana(w){ return FS.collection('semanas').doc(String(w.n))
+    .set({n:w.n, json:JSON.stringify(w)}) },
   usuario(u){ return FS.collection('usuarios').doc(u.uid).set(u) },
   async todo(){
     await Promise.all([this.roster(), this.estado()]);
@@ -736,7 +739,23 @@ const Cloud = {
 };
 async function guardar(fn){
   await Store.saveLocal(DB);
-  if(Cloud.on){ try{ await fn() }catch(e){ console.warn('no se guardó en la nube:',e) } }
+  if(!Cloud.on) return;
+  try{ await fn(); avisoNube(false) }
+  catch(e){ console.error('no se guardó en la nube:', e); avisoNube(true) }
+}
+/* Si la nube rechaza algo, hay que enterarse: lo callado fue el bug. */
+function avisoNube(falla){
+  let n=document.getElementById('cloudwarn');
+  if(!falla){ n?.remove(); return }
+  if(n) return;
+  n=document.createElement('div');
+  n.id='cloudwarn';
+  n.style.cssText='position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:120;'+
+    'background:#EE1515;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;'+
+    'box-shadow:0 6px 24px rgba(0,0,0,.5);max-width:92vw;text-align:center';
+  n.textContent='No se pudo guardar en la nube. Revisa tu conexión.';
+  document.body.appendChild(n);
+  setTimeout(()=>n.remove(), 6000);
 }
 const saveRoster  = ()  => guardar(()=>Cloud.roster());
 const saveEstado  = ()  => guardar(()=>Cloud.estado());
@@ -1601,7 +1620,10 @@ async function initFirebase(){
     });
     FS.collection('config').doc('estado').onSnapshot(d=>{
       const v=d.data(); if(!v) return;
-      aplica(()=>{ DB.counter=v.counter??DB.counter; DB.active=v.active||null });
+      let act=null;
+      if(v.activeJson) { try{ act=JSON.parse(v.activeJson) }catch(e){} }
+      else if(v.active) act=v.active;                 // compatibilidad
+      aplica(()=>{ DB.counter=v.counter??DB.counter; DB.active=act });
     });
     FS.collection('pares').onSnapshot(q=>{
       aplica(()=>{ q.forEach(d=>{ const v=d.data();
@@ -1609,7 +1631,9 @@ async function initFirebase(){
     });
     FS.collection('semanas').onSnapshot(q=>{
       aplica(()=>{ const m={}; DB.weeks.forEach(w=>m[w.n]=w);
-        q.forEach(d=>{ const w=d.data(); m[w.n]=w });
+        q.forEach(d=>{ const v=d.data();
+          let w=v; if(v.json){ try{ w=JSON.parse(v.json) }catch(e){ return } }
+          if(w && w.n!=null) m[w.n]=w });
         DB.weeks=Object.values(m).sort((x,y)=>x.n-y.n) });
     });
     FS.collection('usuarios').onSnapshot(q=>{

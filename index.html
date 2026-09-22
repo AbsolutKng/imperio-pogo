@@ -1627,8 +1627,13 @@ async function initFirebase(){
 
     // caducidad por inactividad
     if(mio?.lastSeen && Date.now()-mio.lastSeen > SESION_MS){
-      gateAviso=`Pasaron más de ${SESION_HORAS} horas sin que entraras, así que cerramos tu sesión.`;
-      await auth.signOut(); return;                 // vuelve a entrar aquí con u=null
+      gateAviso=`Pasaron más de ${SESION_HORAS} horas sin que entraras. Entra de nuevo.`;
+      /* Reseteamos lastSeen ANTES de cerrar sesión. Sin esto, el próximo
+         login lee el timestamp viejo, vuelve a detectar caducidad y saca
+         al usuario otra vez — loop infinito. */
+      try{ await FS.collection('usuarios').doc(u.uid)
+        .set({lastSeen: Date.now()},{merge:true}) }catch(e){}
+      await auth.signOut(); return;
     }
 
     needsName = !mio || !mio.nombre;
